@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Kicau Gank By kangpcode</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- MediaPipe Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { background-color: #020617; margin: 0; overflow-x: hidden; }
+        
+        .main-layout { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 1.5rem; 
+            width: 100%; 
+            max-width: 1400px; 
+            margin: 0 auto; 
+        }
+
+        /* Container Video - Paksa Rasio 16:9 Landscape */
+        .canvas-container { 
+            position: relative; 
+            flex: 1; 
+            aspect-ratio: 16/9; 
+            background: black; 
+            overflow: hidden; 
+            border-radius: 1rem; 
+            border: 2px solid #1e293b; 
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+        
+        /* Container Terminal - Ukuran Tetap (Fixed) */
+        .terminal-container { 
+            width: 100%;
+            height: 250px; /* Tinggi tetap di mobile */
+            background: #0a0f1d; 
+            border: 1px solid #1e293b; 
+            border-radius: 1rem; 
+            display: flex; 
+            flex-direction: column;
+            font-family: 'Consolas', 'Monaco', monospace;
+            overflow: hidden;
+            flex-shrink: 0; /* Mencegah mengecil */
+        }
+
+        @media (min-width: 1024px) {
+            .main-layout { flex-direction: row; align-items: flex-start; }
+            .terminal-container { 
+                width: 380px; /* Lebar tetap di desktop */
+                height: 540px; /* Tinggi tetap di desktop (sejajar dengan 16:9 preview) */
+            }
+        }
+
+        #log-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.75rem;
+            font-size: 11px;
+            color: #94a3b8;
+            background: #0a0f1d;
+        }
+
+        .cat-active {
+            opacity: 1 !important;
+            transform: scale(1) !important;
+        }
+
+        #cat-canvas {
+            display: block;
+            width: auto;
+            height: auto;
+        }
+
+        /* Custom Scrollbar */
+        #log-body::-webkit-scrollbar { width: 4px; }
+        #log-body::-webkit-scrollbar-track { background: transparent; }
+        #log-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+
+        .log-entry {
+            margin-bottom: 4px;
+            line-height: 1.4;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            padding-bottom: 2px;
+        }
+    </style>
+</head>
+<body class="text-white font-sans min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="p-4 md:px-8 border-b border-slate-800 flex justify-between items-center bg-slate-900/80 backdrop-blur-xl sticky top-0 z-40">
+        <div class="flex items-center gap-3">
+            <div class="bg-yellow-500 p-2 rounded-lg shadow-lg shadow-yellow-500/20">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-slate-950"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            </div>
+            <div>
+                <h1 class="text-lg font-black tracking-tighter uppercase leading-none italic">The Kicau Gank</h1>
+                <p class="text-[9px] font-bold text-slate-500 uppercase">Dev: kangpcode</p>
+            </div>
+        </div>
+        
+        <div class="flex gap-2">
+            <label for="file-upload" class="cursor-pointer px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-all flex items-center gap-2 border border-slate-700 active:scale-95">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span class="text-[10px] font-black uppercase">MP4</span>
+                <input id="file-upload" type="file" accept="video/*" class="hidden">
+            </label>
+
+            <button id="mute-btn" class="p-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all active:scale-95">
+                <svg id="icon-unmuted" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden text-green-400"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                <svg id="icon-muted" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-400"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 p-4 lg:p-10">
+        <div class="main-layout">
+            
+            <!-- VIDEO AREA (1920x1080 Aspect) -->
+            <div class="canvas-container">
+                <!-- System Loader -->
+                <div id="loading" class="loading-overlay">
+                    <div class="w-10 h-10 border-[3px] border-yellow-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p class="font-black text-[10px] tracking-widest uppercase text-yellow-500">Engine Initializing</p>
+                </div>
+
+                <video id="input-video" class="hidden" playsinline muted></video>
+                <!-- Canvas internal size 1920x1080 -->
+                <canvas id="output-canvas" width="1920" height="1080" class="w-full h-full object-contain scale-x-[-1]"></canvas>
+
+                <!-- Kucing Joget Layer -->
+                <div id="cat-container" class="absolute inset-0 opacity-0 scale-75 transition-all duration-700 pointer-events-none z-20 flex items-center justify-center">
+                    <canvas id="cat-canvas" style="max-width: 100%; max-height: 100%; object-fit: contain;"></canvas>
+                </div>
+
+                <!-- HUD Info -->
+                <div class="absolute top-5 left-5 flex items-center gap-3 bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl border border-white/5 z-30">
+                    <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div>
+                    <div class="flex flex-col">
+                        <span id="status-text" class="text-[10px] font-black uppercase tracking-widest text-white">System Idle</span>
+                        <div id="hand-pill" class="hidden mt-1 px-2 py-0.5 bg-yellow-500 text-[8px] font-black text-slate-950 rounded uppercase">
+                            Hands: <span id="hand-count">0</span>/4
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TERMINAL LOG (Fixed Dimension) -->
+            <div class="terminal-container shadow-2xl">
+                <div class="bg-slate-900 px-4 py-3 border-b border-slate-800 flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <div class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
+                        <span class="text-[10px] font-black tracking-widest uppercase text-slate-300">Live Diagnostics</span>
+                    </div>
+                    <button onclick="clearLog()" class="text-[9px] font-bold text-slate-600 hover:text-red-400 transition-colors uppercase">Flush</button>
+                </div>
+                <div id="log-body">
+                    <div class="text-blue-500/80 italic text-[10px] mb-3 border-b border-white/5 pb-2">Initializing Kicau Gank Kernel v2.5...</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer Info -->
+        <div class="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-[1400px] mx-auto opacity-60">
+            <div class="border-l-2 border-slate-800 pl-4">
+                <p class="text-[9px] font-bold text-slate-500 uppercase">Detection</p>
+                <p class="text-[11px] font-medium">4 Hand Max Tracking</p>
+            </div>
+            <div class="border-l-2 border-slate-800 pl-4">
+                <p class="text-[9px] font-bold text-slate-500 uppercase">Resolution</p>
+                <p class="text-[11px] font-medium">1920x1080 (16:9)</p>
+            </div>
+            <div class="border-l-2 border-slate-800 pl-4">
+                <p class="text-[9px] font-bold text-slate-500 uppercase">Engine</p>
+                <p class="text-[11px] font-medium">MediaPipe AI 2026</p>
+            </div>
+            <div class="border-l-2 border-slate-800 pl-4">
+                <p class="text-[9px] font-bold text-slate-500 uppercase">Kernel</p>
+                <p class="text-[11px] font-medium">Chroma-Key Stable</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Copyright Footer -->
+    <footer class="border-t border-slate-800 bg-slate-900/50 mt-8 py-4">
+        <div class="max-w-[1400px] mx-auto px-4 flex items-center justify-center gap-2 text-[11px] text-slate-500">
+            <span>&copy; 2026</span>
+            <a href="https://pcode.my.id" target="_blank" class="text-yellow-500 hover:text-yellow-400 font-semibold transition-colors">Kangpcode</a>
+            <span>All Rights Reserved.</span>
+        </div>
+    </footer>
+
+    <!-- Hidden Assets -->
+    <video id="cat-source" src="kicaumaniav1.mp4" loop muted playsinline crossorigin="anonymous" class="hidden"></video>
+
+    <script>
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const catSource = document.getElementById('cat-source');
+        const catCanvas = document.getElementById('cat-canvas');
+        const catCtx = catCanvas.getContext('2d', { willReadFrequently: true });
+        const muteBtn = document.getElementById('mute-btn');
+        const catContainer = document.getElementById('cat-container');
+        const logBody = document.getElementById('log-body');
+        const handCountTag = document.getElementById('hand-count');
+        const handPill = document.getElementById('hand-pill');
+        const fileUpload = document.getElementById('file-upload');
+        
+        let isAudioEnabled = false;
+        let isHandPresent = false;
+        let lastHandCount = 0;
+
+        function clearLog() {
+            logBody.innerHTML = '<div class="text-blue-500/50 italic text-[10px] mb-2">// Buffer flushed. Ready.</div>';
+            log("Log terminal dibersihkan.", "system");
+        }
+
+        function log(msg, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            let color = 'text-slate-500';
+            if (type === 'success') color = 'text-green-400';
+            if (type === 'error') color = 'text-red-400';
+            if (type === 'warning') color = 'text-yellow-400';
+            if (type === 'system') color = 'text-blue-400';
+
+            entry.innerHTML = `<span class="text-slate-700 font-bold">[${time}]</span> <span class="${color}">${msg}</span>`;
+            logBody.appendChild(entry);
+            logBody.scrollTop = logBody.scrollHeight;
+        }
+
+        // Handle MP4 Source
+        catSource.onerror = () => {
+            log("Video lokal tidak terbaca. Mengaktifkan URL cadangan.", "warning");
+            catSource.src = "https://assets.mixkit.co/videos/preview/mixkit-funny-cat-walking-on-a-green-screen-40134-large.mp4";
+        };
+
+        fileUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                catSource.src = URL.createObjectURL(file);
+                log(`Memuat video baru: ${file.name}`, "system");
+            }
+        });
+
+        muteBtn.addEventListener('click', () => {
+            isAudioEnabled = !isAudioEnabled;
+            catSource.muted = !isAudioEnabled;
+            document.getElementById('icon-unmuted').classList.toggle('hidden', !isAudioEnabled);
+            document.getElementById('icon-muted').classList.toggle('hidden', isAudioEnabled);
+            log(`Audio System: ${isAudioEnabled ? 'ON' : 'OFF'}`, isAudioEnabled ? "success" : "warning");
+            if (isAudioEnabled && isHandPresent) catSource.play().catch(()=>{});
+        });
+
+        // Fungsi resize canvas agar match dengan aspek rasio video
+        function resizeCatCanvas() {
+            if (!catSource.videoWidth || !catSource.videoHeight) return;
+            
+            // Ukuran full container (100% width/height dari parent)
+            const containerWidth = catContainer.clientWidth;
+            const containerHeight = catContainer.clientHeight;
+            const videoRatio = catSource.videoWidth / catSource.videoHeight;
+            const containerRatio = containerWidth / containerHeight;
+            let w, h;
+            
+            if (videoRatio >= containerRatio) {
+                // Video lebih lebar dari container - fit width
+                w = containerWidth;
+                h = containerWidth / videoRatio;
+            } else {
+                // Video lebih tinggi dari container - fit height
+                h = containerHeight;
+                w = containerHeight * videoRatio;
+            }
+            
+            // Set internal canvas size untuk 1:1 pixel mapping
+            catCanvas.width = w;
+            catCanvas.height = h;
+        }
+
+        catSource.addEventListener('loadedmetadata', () => {
+            resizeCatCanvas();
+            log(`Video dimensi: ${catSource.videoWidth}x${catSource.videoHeight}`, 'system');
+        });
+        window.addEventListener('resize', resizeCatCanvas);
+
+        function processChromaKey() {
+            if (!catSource.paused && !catSource.ended && catCanvas.width > 0) {
+                catCtx.clearRect(0, 0, catCanvas.width, catCanvas.height);
+                
+                // Draw video ujung ke ujung (full bleed) dengan presisi 1:1
+                catCtx.drawImage(catSource, 0, 0, catCanvas.width, catCanvas.height);
+                
+                // Chroma key processing
+                const frame = catCtx.getImageData(0, 0, catCanvas.width, catCanvas.height);
+                const data = frame.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i], g = data[i + 1], b = data[i + 2];
+                    if (g > 70 && g > r * 1.3 && g > b * 1.3) data[i + 3] = 0;
+                }
+                catCtx.putImageData(frame, 0, 0);
+            }
+            requestAnimationFrame(processChromaKey);
+        }
+
+        function onResults(results) {
+            // Tetapkan ukuran canvas ke 1920x1080 untuk 1:1 landscape
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            const handsCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+
+            if (handsCount !== lastHandCount) {
+                if (handsCount > 0) log(`${handsCount} tangan terdeteksi.`, "success");
+                else log("Tangan keluar jangkauan.", "error");
+                lastHandCount = handsCount;
+            }
+
+            // Selalu gambar kerangka tangan jika ada tangan terdeteksi
+            if (handsCount > 0) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#EAB308', lineWidth: 4});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', lineWidth: 1, radius: 2});
+                }
+            }
+
+            // Video kucing hanya play jika 2 tangan atau lebih
+            if (handsCount >= 2) {
+                handCountTag.innerText = handsCount;
+                handPill.classList.remove('hidden');
+                if (!isHandPresent) {
+                    isHandPresent = true;
+                    catContainer.classList.add('cat-active');
+                    catSource.play().catch(()=>{});
+                    document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]';
+                    document.getElementById('status-text').innerText = 'KICAU MANIA';
+                }
+            } else {
+                handPill.classList.add('hidden');
+                if (isHandPresent) {
+                    isHandPresent = false;
+                    catContainer.classList.remove('cat-active');
+                    catSource.pause();
+                    document.getElementById('status-dot').className = 'w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]';
+                    document.getElementById('status-text').innerText = 'System Idle';
+                }
+            }
+            canvasCtx.restore();
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 4,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1920, // Request 1920x1080 dari hardware
+            height: 1080
+        });
+
+        // Disable klik kanan dengan pesan
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            alert('hayoloh mau ngapain bwang :)');
+            return false;
+        });
+
+        window.onload = () => {
+            log("Menginisialisasi Kernel Kamera...", "system");
+            camera.start().then(() => {
+                log("Kernel aktif. Resolusi: 1920x1080.", "success");
+                document.getElementById('loading').style.display = 'none';
+                processChromaKey();
+            }).catch(err => log("Gagal akses kamera: " + err.message, "error"));
+        };
+    </script>
+</body>
+</html>
