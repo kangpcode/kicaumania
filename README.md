@@ -1,6 +1,6 @@
 # The Kicau Gank
 
-![Tampilan Aplikasi The Kicau Gank](screenshot.png)
+![Tampilan Aplikasi The Kicau Gank](Screenshot.png)
 
 ## Aplikasi AI Hand Tracking Interaktif dengan Animasi Kucing Menari Real-Time
 
